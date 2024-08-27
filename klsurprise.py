@@ -173,7 +173,7 @@ def process_batch(self):
     # this function speeds up the computation of KLD but limits the code usage to only jax compatible functions.
     pass
 
-def process_batch(logpost, coordinates, batch_size=1000, progress=False):
+def process_batch(self, logpost, coordinates, batch_size=1000, progress=False):
     """
     Apply a function logpost over parameters in batches. 
     This makes distributes the computation of logP and makes the evaluation of KLD faster, but limits the code usage 
