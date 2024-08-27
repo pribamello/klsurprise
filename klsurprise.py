@@ -167,13 +167,7 @@ def run_nested_sampling(self, loglikelihood, ndim, domain=None, prior_transform=
         
     return results
 
-def process_batch(self):
-    # this function will be used to compute kld by means of monte carlo integration.
-    # it processes batches of information and serialize computation using jax
-    # this function speeds up the computation of KLD but limits the code usage to only jax compatible functions.
-    pass
-
-def process_batch(self, logpost, coordinates, batch_size=1000, progress=False):
+def process_batch(self, logpost, parameter_array, batch_size=1000, progress=False):
     """
     Apply a function logpost over parameters in batches. 
     This makes distributes the computation of logP and makes the evaluation of KLD faster, but limits the code usage 
@@ -181,7 +175,7 @@ def process_batch(self, logpost, coordinates, batch_size=1000, progress=False):
     
     Parameters:
         logpost (callable): The log-posterior function to apply to the coordinates. This function should be jax compatible.
-        coordinates (array-like): A 2D array where each row represents a coordinate in the parameter space.
+        parameter_array (array-like): A 2D array where each row represents a parameter vector.
                                   The function will be applied to each row.
         batch_size (int, optional): The number of coordinates to process in each batch. Defaults to 1000.
         progress (bool, optional): If `True`, displays a progress bar during processing. Defaults to `False`.
@@ -197,7 +191,7 @@ def process_batch(self, logpost, coordinates, batch_size=1000, progress=False):
     vmap_logpost = vmap(logpost)
     
     # Prepare to process the coordinates in batches
-    flat_coordinates = coordinates
+    flat_coordinates = parameter_array
     logpost_matrix = []
 
     # Iterate over the coordinates in batches
