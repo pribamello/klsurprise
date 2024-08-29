@@ -4,6 +4,7 @@ from dynesty import utils as dyfunc
 
 import jax.numpy as jnp
 from jax import vmap
+from jax import jit
 
 from tqdm.auto import tqdm
 
@@ -209,7 +210,7 @@ def process_batch(self, logpost, parameter_array, batch_size=1000, progress=Fals
     return logpost_matrix
 
 
-def compute_KLD_MCMC(self, res_p, logP, res_q, logQ, domain=None, 
+def KLD_numerical(self, res_p, logP, res_q, logQ, domain=None, 
                      clip_range=[-1e16, 5000], clip_values=True, progress=True, 
                      batch_size=1000):
     """
@@ -277,8 +278,8 @@ def compute_KLD_MCMC(self, res_p, logP, res_q, logQ, domain=None,
         return logQ(x) - logZq 
         
     # Process the samples to obtain normalized log-probabilities
-    log_prob_p = process_batch(logP_norm, samples_p, progress=progress, batch_size=batch_size)
-    log_prob_q = process_batch(logQ_norm, samples_p, progress=progress, batch_size=batch_size)
+    log_prob_p = self.process_batch(logP_norm, samples_p, progress=progress, batch_size=batch_size)
+    log_prob_q = self.process_batch(logQ_norm, samples_p, progress=progress, batch_size=batch_size)
 
     # Clip values to avoid overflow if specified
     if clip_values:
