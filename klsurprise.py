@@ -6,6 +6,8 @@ import jax.numpy as jnp
 from jax import vmap
 from jax import jit
 
+import joblib
+
 from tqdm.auto import tqdm
 
 class surprise_statistics:
@@ -282,10 +284,43 @@ class surprise_statistics:
 
         return kld
 
+    def kld_worker(self, sample, logL_mock, mock1_NS_result, logP_1=None, domain=None, ndim=None, prior_transform='flat', n_effective = 20000):
+        '''
+        Worker function for parallelizing the evaluation of KLD distribution.
 
-    def kld_worker(self):
-        # this function is used so the code can compute the Surprise statistics in parallel usnig joblib
-        pass
+        Parameters:
+        - sample: The sample from the PPD for which KLD is to be evaluated. Its a data_2_mock vector.
+        - logL_mock: Function to compute log-likelihood for mock data. A function that contains two inputs> (param, data)
+        - mock1_NS_result: result object from Dynesty Nested Sampling.
+        - domain: Parameter space domain.
+        Returns:
+        - Tuple of (kld, sample).
+
+        Notes: domain information can be contained inside the prior_transform function. 
+            domain information is only requested for a flat prior. 
+        '''     
+        if domain is None:
+            domain_pass = self.domain
+        else:
+            domain_pass = domain
+        if ndim is None:
+            ndim = self.ndim
+        if callable(prior_transform):
+            domain_pass = None
+        
+        # create mock data and run nested sampling 
+        logpMock_2 = lambda u : logL_mock(u, sample) # create full posterior distribution 2
+        results2 = self.run_nested_sampling(logpMock_2, ndim=ndim, prior_transform=prior_transform, 
+                                        domain=domain_pass, n_effective=n_effective) # functions arguments are the best for SNIa chain.
+    
+        if logP_1 is None:
+            print("Please make sure the log-posterior of data-1 is a valid function for MCMC mode!")
+        
+        kld_mcmc = self.KLD_numerical(results2, logpMock_2, mock1_NS_result, logP_1, domain = domain, prior_transform=prior_transform,
+                                    clip_range = [-1e8, 1500], clip_values = True, progress=False, batch_size = 1000)
+        kld_return = kld_mcmc
+        
+        return kld_return, sample
 
     def write_results_to_hdf5(self):
         # this function is currently beeing used to save the results.
