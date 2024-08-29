@@ -149,7 +149,7 @@ class surprise_statistics:
         if dynamic_NS:
             # "Dynamic" nested sampling.
             # Effectively samples the posterior.
-            dsampler = dynesty.DynamicNestedSampler(loglikelihood, prior_transform, ndim, bootstrap=bootstrap)
+            dsampler = dynesty.DynamicNestedSampler(loglikelihood, prior_transform_fun, ndim, bootstrap=bootstrap)
             dsampler.run_nested(dlogz_init=dlogz, print_progress=print_progress, nlive_init=nlive, 
                                 nlive_batch=nlive_batch, maxbatch=maxbatch, maxiter=maxiter, use_stop=use_stop, n_effective=n_effective)
             dresults = dsampler.results
