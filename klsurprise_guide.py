@@ -88,7 +88,8 @@ def process_batch(self):
     # this function speeds up the computation of KLD but limits the code usage to only jax compatible functions.
     pass
 
-def compute_KLD_MCMC(self):
+def KLD_numerical(self)
+    # old version was: compute_KLD_MCMC():
     # currently limited to likelihoods that use jax
     # If I can fix this I can make this code work with any likelihood
     # there might be a way to optmize this function in parallel without jax.
