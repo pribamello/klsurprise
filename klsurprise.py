@@ -123,17 +123,20 @@ class surprise_statistics:
         """
         if ndim is None:
             ndim = self.ndim
-        if domain is not None:
-            # Ensure the domain is a numpy array with the right shape
-            domain = np.asarray(domain)
-            assert domain.shape == (ndim, 2), "Domain must be an array with shape (ndim, 2)."
+        if domain is None:
+            domain = self.domain
+        # Ensure the domain is a numpy array with the right shape
+        domain = np.asarray(domain)
+        assert domain.shape == (ndim, 2), "Domain must be an array with shape (ndim, 2)."
 
-            if prior_transform == "flat":
-                # Define the prior transform function
-                def prior_transform(utheta):
-                    """Transforms samples `utheta` drawn from the unit cube to samples from the domain."""
-                    return domain[:, 0] + utheta * (domain[:, 1] - domain[:, 0])
-        
+        if prior_transform == "flat":
+            # Define the prior transform function
+            def prior_transform_fun(utheta):
+                """Transforms samples `utheta` drawn from the unit cube to samples from the domain."""
+                return domain[:, 0] + utheta * (domain[:, 1] - domain[:, 0])
+        else:
+            raise("Only flat prior is currently implemented")
+
         if static_NS:
             # "Static" nested sampling.
             # Accurately measures evidence but it's not as effective in sampling the posterior.
