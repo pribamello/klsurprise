@@ -15,6 +15,8 @@ def surprise_statistics(logL1, data_2_model_fun, covariance_matrix_2, domain, da
     by performing Nested Sampling. It allows for comparing the likelihoods and data models within a specified parameter
     domain using a top-hat prior.
 
+    Computes the Surprise statistics S(p(x|D2)||p(x|D1))
+
     Args:
         logL1 (callable): 
             A function that computes the log-likelihood of data_1 given parameters (theta).
@@ -206,12 +208,88 @@ def process_batch(self, logpost, parameter_array, batch_size=1000, progress=Fals
     
     return logpost_matrix
 
-def compute_KLD_MCMC(self):
-    # currently limited to likelihoods that use jax
-    # If I can fix this I can make this code work with any likelihood
-    # there might be a way to optmize this function in parallel without jax.
-    # maybe using mpi 
-    pass
+
+def compute_KLD_MCMC(self, res_p, logP, res_q, logQ, domain=None, 
+                     clip_range=[-1e16, 5000], clip_values=True, progress=True, 
+                     batch_size=1000):
+    """
+    Computes the Kullback-Leibler Divergence between two distributions: KLD(p|q).
+
+    Parameters:
+    ----------
+    res_p : dynesty NS results object
+        Dynesty nested sampling results for the first distribution.
+    logP : function
+        Log-probability function for the first distribution.
+    res_q : dynesty NS results object
+        Dynesty nested sampling results for the second distribution.
+    logQ : function
+        Log-probability function for the second distribution.
+    domain : array-like, optional
+        The domain over which the prior is defined. This is required if using 
+        a flat prior (default is None).
+    prior_transform : str, optional
+        Type of prior transform applied. Default is 'flat'.
+    clip_range : list, optional
+        Range for clipping log-probability values to avoid overflow (default is [-1e16, 5000]).
+    clip_values : bool, optional
+        Whether to clip the log-probability values (default is True).
+    progress : bool, optional
+        Whether to display a progress bar during processing (default is True).
+    batch_size : int, optional
+        The size of batches for processing samples (default is 1000).
+    
+    Returns:
+    -------
+    kld : float
+        The computed Kullback-Leibler Divergence between the two distributions.
+
+    Notes:
+    -----
+    - The function currently assumes a flat prior volume if `prior_transform` is 'flat'.
+    - A more efficient way to obtain `samples_p` and corresponding `logP` values exists, 
+      but is not implemented yet.
+    - This function assumes that logP is jax compatible.
+    """
+
+    # Compute the prior volume if domain is provided
+    prior_transform='flat'
+    if (domain is not None) and (prior_transform == 'flat'):
+        prior_volume = calculate_flat_prior_volume(domain)
+    # else assume it to be one
+    else:
+        prior_volume = 1
+
+    # Obtain equally weighted samples of distribution p(theta)
+    samples_p = res_p.samples_equal()
+    
+    # Compute the evidence-normalized log-probability functions for both distributions
+    logZp = res_p['logz'][-1] + np.log(prior_volume)
+    
+    @jit
+    def logP_norm(x):
+        return logP(x) - logZp    
+
+    logZq = res_q['logz'][-1] + np.log(prior_volume)
+    
+    @jit
+    def logQ_norm(x):
+        return logQ(x) - logZq 
+        
+    # Process the samples to obtain normalized log-probabilities
+    log_prob_p = process_batch(logP_norm, samples_p, progress=progress, batch_size=batch_size)
+    log_prob_q = process_batch(logQ_norm, samples_p, progress=progress, batch_size=batch_size)
+
+    # Clip values to avoid overflow if specified
+    if clip_values:
+        log_prob_p = np.clip(log_prob_p, a_min=clip_range[0], a_max=clip_range[1])
+        log_prob_q = np.clip(log_prob_q, a_min=clip_range[0], a_max=clip_range[1])
+
+    # Compute the Kullback-Leibler Divergence
+    kld = (log_prob_p - log_prob_q).mean()
+
+    return kld
+
 
 def kld_worker(self):
     # this function is used so the code can compute the Surprise statistics in parallel usnig joblib
