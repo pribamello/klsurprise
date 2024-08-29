@@ -1,0 +1,5 @@
+# Ignore the entire legacy_code directory
+legacy_code/
+
+# Ignore the specific Jupyter Notebook file debug.ipynb
+debug.ipynb
