@@ -54,13 +54,14 @@ def sampler(self):
     # maybe in a helper file or outisde this class
     pass
 
-def calculate_flat_prior_volume(self):
+def calculate_flat_prior_volume(self): ################################## ok
     # necessary to normalize the NS run
     pass
 
-def calculate_gaussian_prior_volume(self):
+# This is really not necessary. It's just one...
+# def calculate_gaussian_prior_volume(self):
     # necessary to normalize the NS run.
-    pass
+    # pass
 
 def prior_transform_flat(self):
     # implemented already
@@ -73,11 +74,11 @@ def prior_transform_gaussian(self):
     # flat prior transform
     pass
 
-def run_nested_sampling(self):
+def run_nested_sampling(self): ################################## ok
     # already implemented, working fine.
     pass
 
-# def analytical_kld(self):
+# def analytical_kld(self): 
     # might not be needed here
     # pass
 
