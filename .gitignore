@@ -1,5 +1,0 @@
-# Ignore Jupyter Notebook files
-*.ipynb
-
-# Ignore the legacy_code directory
-legacy_code/

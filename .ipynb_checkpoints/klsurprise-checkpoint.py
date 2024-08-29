@@ -8,7 +8,7 @@ from jax import jit
 
 from tqdm.auto import tqdm
 
-class surprise_statistics:
+class surprise_statistics(logL1, data_2_model_fun, covariance_matrix_2, domain, data_2=None, data_1_name=None, data_2_name=None):
     """
     Computes the surprise statistics between two datasets or models using Nested Sampling.
 
@@ -53,6 +53,7 @@ class surprise_statistics:
             """
             Initializes the SurpriseStatistics class with the provided parameters.
             """
+            # Initialize the class with the provided parameters
             self.logL1 = logL1
             self.data_2_model_fun = data_2_model_fun
             self.covariance_matrix_2 = covariance_matrix_2
@@ -62,7 +63,7 @@ class surprise_statistics:
             self.data_2_name = data_2_name
             self.ndim = domain.shape[0]
 
-    def calculate_flat_prior_volume(self, domain=None):
+    def calculate_flat_prior_volume(self):
         """
         Calculate the volume of a flat (uniform) prior distribution over a specified multidimensional domain.
 
@@ -73,9 +74,7 @@ class surprise_statistics:
         Returns:
         float: The calculated volume of the domain, which is the product of the lengths of the intervals for each dimension.
         """
-        if domain is None:
-            domain = self.domain
-        lengths = np.diff(domain, axis=1).T
+        lengths = np.diff(self.domain, axis=1).T
         volume = np.prod(lengths)
         return volume
 
@@ -123,25 +122,21 @@ class surprise_statistics:
         """
         if ndim is None:
             ndim = self.ndim
-        if domain is None:
-            domain = self.domain
-        # Ensure the domain is a numpy array with the right shape
-        domain = np.asarray(domain)
-        assert domain.shape == (ndim, 2), "Domain must be an array with shape (ndim, 2)."
+        if domain is not None:
+            # Ensure the domain is a numpy array with the right shape
+            domain = np.asarray(domain)
+            assert domain.shape == (ndim, 2), "Domain must be an array with shape (ndim, 2)."
 
-        if prior_transform == "flat":
-            # Define the prior transform function
-            def prior_transform_fun(utheta):
-                """Transforms samples `utheta` drawn from the unit cube to samples from the domain."""
-                return domain[:, 0] + utheta * (domain[:, 1] - domain[:, 0])
-        else:
-            prior_transform_fun = prior_transform
-            raise("Only flat prior is currently implemented")
-
+            if prior_transform == "flat":
+                # Define the prior transform function
+                def prior_transform(utheta):
+                    """Transforms samples `utheta` drawn from the unit cube to samples from the domain."""
+                    return domain[:, 0] + utheta * (domain[:, 1] - domain[:, 0])
+        
         if static_NS:
             # "Static" nested sampling.
             # Accurately measures evidence but it's not as effective in sampling the posterior.
-            sampler = dynesty.NestedSampler(loglikelihood, prior_transform_fun, ndim, nlive=nlive, bootstrap=bootstrap, **kwargs)
+            sampler = dynesty.NestedSampler(loglikelihood, prior_transform, ndim, nlive=nlive, bootstrap=bootstrap, **kwargs)
             sampler.run_nested(dlogz=dlogz, print_progress=print_progress)
             sresults = sampler.results
             results = sresults
@@ -149,7 +144,7 @@ class surprise_statistics:
         if dynamic_NS:
             # "Dynamic" nested sampling.
             # Effectively samples the posterior.
-            dsampler = dynesty.DynamicNestedSampler(loglikelihood, prior_transform_fun, ndim, bootstrap=bootstrap)
+            dsampler = dynesty.DynamicNestedSampler(loglikelihood, prior_transform, ndim, bootstrap=bootstrap)
             dsampler.run_nested(dlogz_init=dlogz, print_progress=print_progress, nlive_init=nlive, 
                                 nlive_batch=nlive_batch, maxbatch=maxbatch, maxiter=maxiter, use_stop=use_stop, n_effective=n_effective)
             dresults = dsampler.results
@@ -247,7 +242,7 @@ class surprise_statistics:
         # Compute the prior volume if domain is provided
         prior_transform='flat'
         if (domain is not None) and (prior_transform == 'flat'):
-            prior_volume = self.calculate_flat_prior_volume(domain)
+            prior_volume = calculate_flat_prior_volume(domain)
         # else assume it to be one
         else:
             prior_volume = 1
