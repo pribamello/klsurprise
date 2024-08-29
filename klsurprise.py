@@ -135,12 +135,13 @@ class surprise_statistics:
                 """Transforms samples `utheta` drawn from the unit cube to samples from the domain."""
                 return domain[:, 0] + utheta * (domain[:, 1] - domain[:, 0])
         else:
+            prior_transform_fun = prior_transform
             raise("Only flat prior is currently implemented")
 
         if static_NS:
             # "Static" nested sampling.
             # Accurately measures evidence but it's not as effective in sampling the posterior.
-            sampler = dynesty.NestedSampler(loglikelihood, prior_transform, ndim, nlive=nlive, bootstrap=bootstrap, **kwargs)
+            sampler = dynesty.NestedSampler(loglikelihood, prior_transform_fun, ndim, nlive=nlive, bootstrap=bootstrap, **kwargs)
             sampler.run_nested(dlogz=dlogz, print_progress=print_progress)
             sresults = sampler.results
             results = sresults
