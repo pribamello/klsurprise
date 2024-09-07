@@ -6,7 +6,13 @@ import jax.numpy as jnp
 from jax import vmap
 from jax import jit
 
+from joblib import Parallel, delayed
+from joblib import load, dump
+
 from tqdm.auto import tqdm
+import h5py
+from scipy import special
+
 
 class surprise_statistics:
     """
@@ -349,37 +355,119 @@ class surprise_statistics:
             
         return kld_return, sample
 
+   
+    def save_dict_to_hdf5(self, file_name, data_dict):
+        """
+        Save the contents of a dictionary to an HDF5 file, handling different data types.
 
-    def write_results_to_hdf5(self):
-        # this function is currently beeing used to save the results.
-        # but it's badly writen and I already have a new version.
-        # I need to integrate it here.
-        pass
+        Parameters:
+        - file_name: The name of the HDF5 file to be created.
+        - data_dict: The dictionary to save, where keys are dataset names and values are the data.
+        """
+        with h5py.File(file_name, 'w') as hdf:
+            for key, value in data_dict.items():
+                # Check the type of the value to handle it appropriately
+                if isinstance(value, np.ndarray):
+                    # Save NumPy arrays directly as datasets
+                    hdf.create_dataset(key, data=value)
+                elif isinstance(value, jnp.ndarray):
+                    # Convert JAX array to NumPy array and save it
+                    hdf.create_dataset(key, data=np.array(value))
+                elif isinstance(value, (float, int, np.float32, np.float64, np.int32, np.int64)):
+                    # Save floats or integers as attributes of a dataset
+                    # If the value is a NumPy scalar, convert to a native Python type
+                    if hasattr(value, 'item'):
+                        value = value.item()
+                    dset = hdf.create_dataset(key, data=[])
+                    dset.attrs['value'] = value
+                else:
+                    raise TypeError(f"Unsupported data type for key '{key}': {type(value)}")
+    
 
-    def save_dict_to_hdf5(self):
-        # this is the better implemented function.
-        pass
+    def compute_kld_distribution(self, PPDsamples, logL_mock, mock1_NS_result, logP_1=None, domain=None, ndim=None, n_jobs=4, 
+                  result_path='results.hdf5', prior_transform='flat', n_effective=20000, clip_range = [-1e16, 50000]):
+        """
+        Parallel computation of KLD for PPD samples and saving results to HDF5. Will compute distribution Dkl(p2i, p1)
 
-    def compute_kld_distribution(self):
-        # old main_parallel
-        # this function computes the KLD distribution
-        # this is the most costly function, which is used to compute the KLD distribution.
-        ## currently it has an internal routine that saves the results. I want to change that so the results are saved outside this function.
-        ## another possibility would be to implement this function in a way that it iterativelly saves the results. 
-        pass
+        Parameters:
+        - PPDsamples: Collection of PPD samples to process.
+        - logL_mock: Function for log-likelihood computation for mock data. A function that contains two inputs> (param, data)
+        - mock1_NS_result: result object from Dynesty Nested Sampling for mock 1.
+        - domain: Parameter space domain.
+        - n_jobs (optional): Number of parallel jobs. Defaults to 2.
+        - result_path (optional): Path to HDF5 file for results. Defaults to 'results.hdf5'.
+        - prior_transform: currently a flat prior transform defined by domain. 
+        """
+        kld_results, ppdsample_results = [], []
 
-    def find_pval(self):
-        # this function is used in post-processing of main_parallel results.
-        pass
+        if domain is None:
+            domain_pass = self.domain
+        
+        results = Parallel(n_jobs=n_jobs)(delayed(self.kld_worker)
+                                        (sample, logL_mock, mock1_NS_result, logP_1, domain_pass, ndim, prior_transform, n_effective, clip_range)
+                                        for i, sample in enumerate(tqdm(PPDsamples, desc="Iterating over the PPD")))
 
-    def sigma_discordance(self):
-        # this function is used in post-processing of main_parallel results.
-        pass
+        for kld, ppdsample in results:
+            kld_results.append(kld)
+            ppdsample_results.append(ppdsample) 
 
-    def load_create_NS_file(self):
-        # this function is used to load data_1,2_name if provided
-        pass
+        results_dict = {"kld_dist" : kld_results, "ppd_sample" : ppdsample_results}
 
+        if result_path is not None:
+            self.save_dict_to_hdf5(result_path, results_dict)
+        
+        return kld_results   
+
+    def find_pval(self, Sdist, S, verbose = 0):
+        """
+        Calculate the p-value from a distribution of surprise values given an observed surprise.
+
+        Parameters:
+        - Sdist (ndarray): An array of surprise values from simulations or a distribution.
+        - S (float): The observed surprise value for which the p-value is to be calculated.
+
+        Returns:
+        - pval (float): The calculated p-value indicating the probability of observing a surprise at least as extreme as S.
+        """
+        pval = Sdist[Sdist > S].size/Sdist.size
+        if verbose>0:
+            print("p-value = {:.1f} %".format(100*pval))
+        return pval
+
+    def sigma_discordance(self, p_value):
+        return np.sqrt(2)*special.erfinv(1-p_value)
+
+    def load_create_NS_file(self, data_1_name, logL1, ndim, domain,  n_effective=15000, dlogz=0.5):
+        '''
+        This function checks for existing NS results and if they don't exist, it creates one using logL1 and domain.
+        '''
+        print(70*'-')
+        print("Loading posterior data")
+        print(70*'-')
+        try: 
+            ## loading pre-made Nested Sampling run
+            res_1 = load(data_1_name)
+            print("Data loaded sucessfully!")
+        except:
+            print(70*'-')
+            print("Loading failed!")
+            print(70*'-')
+
+            print("Running Nested Sampling...")
+            print(70*'-')
+            # any nested sampling routine will be fine, as long as it has the method .samples_equal() or equivalent, to obtain equally weighted samples. 
+            res_1 = self.run_nested_sampling(logL1, ndim, domain=domain, print_progress=True, n_effective=n_effective, dlogz=dlogz)
+            print("Run completed sucessfully.")
+            
+            # if data_1_name is not None:
+            try:
+                print("Saving ", data_1_name)
+                dump(res_1, data_1_name)
+            except:
+                pass
+        return res_1
+    
+    
     def surprise_function_call(self):
         # this is the main routine which also computes the PPD.
         pass
