@@ -5,6 +5,7 @@ from dynesty import utils as dyfunc
 import jax.numpy as jnp
 from jax import vmap
 from jax import jit
+from jax.scipy.linalg import solve_triangular
 
 from joblib import Parallel, delayed
 from joblib import load, dump
@@ -12,6 +13,9 @@ from joblib import load, dump
 from tqdm.auto import tqdm
 import h5py
 from scipy import special
+
+
+import PPD
 
 
 class surprise_statistics:
@@ -67,6 +71,50 @@ class surprise_statistics:
             self.data_1_name = data_1_name
             self.data_2_name = data_2_name
             self.ndim = domain.shape[0]
+
+            self.chol_cov_2 = jnp.linalg.cholesky(covariance_matrix_2)  
+
+    def logL2(self, theta, D):
+        """
+        Compute the log-likelihood of x for the multivariate normal distribution.
+        
+        Args:
+        - x: The observed data (n-dimensional vector).
+        - D: 
+
+        Returns:
+        - The log-likelihood of x.
+        """
+        n = D.shape[0]
+        diff = self.data_2_model_fun(theta) - D
+        # Solve the triangular system using the Cholesky factor
+        solve = solve_triangular(self.chol_cov_2, diff, lower=True)
+        log_det_cov = 2 * jnp.sum(jnp.log(jnp.diagonal(self.chol_cov_2)))
+        log_likelihood = -0.5 * (n * jnp.log(2 * jnp.pi) + log_det_cov + jnp.dot(solve, solve))
+        
+        return log_likelihood
+
+    def sampler(self, chain, nsample):
+        '''
+        Sample coordinate points on a Markov Chain Monte Carlo (MCMC) chain.
+
+        This function is used to randomly select a specified number of samples from a given chain of equally weighted points. 
+        It is useful in scenarios where you need a subset of samples from a larger MCMC chain for analysis 
+        or further processing.
+
+        Parameters:
+        chain (array-like): A collection or array representing the MCMC chain. 
+                            Each element in this array is a state or point in the MCMC chain.
+        nsample (int): The number of samples to be drawn from the chain. This value should be 
+                    a positive integer and less than or equal to the length of the chain.
+
+        Returns:
+        array-like: A subset of the chain, containing the randomly selected samples.
+        '''
+        index = np.arange(0, len(chain))
+        rnd_el = np.random.choice(index, nsample)
+        sampled = chain[rnd_el]
+        return sampled
 
     def calculate_flat_prior_volume(self, domain=None):
         """
@@ -466,27 +514,64 @@ class surprise_statistics:
             except:
                 pass
         return res_1
-    
-    
-    def surprise_function_call(self):
-        # this is the main routine which also computes the PPD.
-        pass
 
-    ############# maybe I should also create a function that computes the PPD here. Instead of leaving it as a very short outside module.
+    def surprise_function_call(self, Nkld, result_path, n_effective= 15000, n_jobs=-1, verbose=1):
+        # logL1 --> a callable function of theta (parameter)
+        # logL2 --> a callable function of theta (parameter) and D (data).
+        # data_2_vec is yet to be added. If provided then function should also compute KLD(p2|p1) 
+        # and return the surprise statistic value  
+        ndim = domain.shape[0]
 
-    '''
-    # These functions can be used to process nested sampling results but might not be needed for now
-    def get_random_generator(self):
-        pass
+        logL1 = self.logL1 
+        logL2 = self.logL2 
+        data2_model_fun = self.data_2_model_fun
+        covariance_matrix_2 = self.covariance_matrix_2
+        domain = self.domain
+        data_1_name = self.data_1_name
+        data_2_vec = self.data_2
+        data_2_name = self.data_2_name
+        ############ loading/creating mock 1 ############
+        res_1 = self.load_create_NS_file(data_1_name, logL1, ndim, domain)
+        
+        # This method is a particularity of Dynesty, but can be easily implemented for any other NS package.
+        # Equal weighted samples 
+        eq_samples_1 = res_1.samples_equal()
+        print("Done!")
+        
+        ############ create posterior predictive distribution ############
+        # parameter space samples of posterior distribution p(theta|D1)
+        th1_samples = self.sampler(eq_samples_1, Nkld) # we take a subset of samples with size Nkld
+        PPD_chain = PPD.create_ppd_chain(th1_samples=th1_samples, data_model_fun=data2_model_fun, cov_matrix = covariance_matrix_2, sample_size=1, n_jobs=n_jobs)
 
-    def importance_weights(self):
-        pass
+        kld_samples = self.compute_kld_distribution(PPD_chain, logL2, res_1, logP_1=logL1,  domain=domain, n_jobs=n_jobs, n_effective=n_effective)
 
-    def resample_equal(self):
-        # function to resample NS results
-        pass
-    '''
+        kld_array = np.array(kld_samples)
+        kld_exp = kld_array.mean()
+        S_dist = kld_array - kld_exp
 
-    # def analytical_kld(self):
-        # might not be needed here
-        # pass
+        # if data 2 is provided
+        if data_2_vec is not None:
+            logP2 = lambda theta : logL2(theta, data_2_vec)
+
+            # load or create data_2 posterior chain with NS
+            if data_2_name is not None:
+                res_2 = self.load_create_NS_file(data_2_name, logP2, ndim, domain)
+            else:
+                res_2 = self.run_nested_sampling(logP2, ndim, domain=domain, print_progress=True)
+            
+            kld_value = self.KLD_numerical(res_2, logP2, res_1, logL1, domain = domain)
+            S = kld_value - kld_exp
+            p_value = self.find_pval(S_dist, S, verbose = verbose)
+            sigma_disc = self.sigma_discordance(p_value)
+            if verbose>0:
+                print("S = {:.2f} nats".format(S))
+                print("<KLD> = {:.2f} nats".format(kld_exp))
+                print("KLD = {:.2f} nats".format(kld_value))
+            results_dic = {"S" : S, "S_dist": S_dist, "kld21" : kld_value[0], "kld_exp":kld_exp, "kld_dist":kld_array, "p_value":p_value, 'sigma_discordance':sigma_disc}
+        else:
+            if verbose>0:
+                print("<KLD> = {:.2f} nats".format(kld_exp))
+            results_dic = {"S_dist": S_dist, "kld_exp":kld_exp, "kld_dist":kld_array}
+        if result_path is not None:
+            self.save_dict_to_hdf5(result_path, results_dic)
+        return results_dic
