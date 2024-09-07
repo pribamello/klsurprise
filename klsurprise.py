@@ -282,10 +282,73 @@ class surprise_statistics:
 
         return kld
 
+    def kld_worker(self, sample, logL_mock, mock1_NS_result, logP_1=None, domain=None, ndim=None, 
+                prior_transform='flat', n_effective = 20000, clip_range = [-1e16, 50000]):
+        '''
+        Worker function for parallelizing the evaluation of the Kullback-Leibler Divergence (KLD) distribution.
 
-    def kld_worker(self):
-        # this function is used so the code can compute the Surprise statistics in parallel usnig joblib
-        pass
+        Parameters:
+        -----------
+        sample : array-like
+            A sample from the Posterior Predictive Distribution (PPD) for which KLD distribution is to be evaluated.
+        
+        logL_mock : callable
+            Function to compute the log-likelihood for mock data. It should accept two inputs: (parameters, data).
+        
+        mock1_NS_result : object
+            Result object from the first Nested Sampling run (output from a Dynesty nested sampling).
+        
+        logP_1 : callable, optional
+            Log-posterior function for the data from the first dataset.
+        
+        domain : array-like, optional
+            Parameter space domain. Required if `prior_transform` is 'flat', otherwise inferred from the `prior_transform` function.
+        
+        ndim : int, optional
+            The number of dimensions in the parameter space. If not provided, it defaults to `self.ndim`.
+        
+        prior_transform : callable or str, optional
+            Transformation function for the prior distribution, which maps a uniform distribution to the 
+            parameter space. Can be a custom function or the string 'flat' for flat priors. Defaults to 'flat'.
+        
+        n_effective : int, optional
+            The number of effective samples to target for the nested sampling run. Defaults to 20,000.
+        
+        clip_range : list, optional
+            Range for clipping log-likelihood values to avoid numerical overflow or underflow. Defaults to [-1e16, 50000].
+
+        Returns:
+        --------
+        tuple
+            kld, sample:
+            - kld: The value KLD(p_mock, p1) where p_mock was created using sample as data vector for likelihood 2.
+            - sample: The input PPD sample used to generate the value of kld returned.
+        
+        Notes:
+        ------
+        - If `domain` is provided, it will override the domain information in `prior_transform`.
+        - The domain information is only required when using a flat prior.
+        - Currently only works for flat priors.
+        '''  
+
+        if (domain is not None):
+            domain_pass = self.domain
+        if (ndim is None):
+            ndim = self.ndim
+        if callable(prior_transform):
+            domain_pass = None
+        # create mock data and run nested sampling 
+        logpMock_2 = lambda u : logL_mock(u, sample) # create full posterior distribution 2
+        results2 = self.run_nested_sampling(logpMock_2, ndim=ndim, prior_transform=prior_transform, 
+                                        domain=domain_pass, n_effective=n_effective) # functions arguments are the best for SNIa chain.
+        if logP_1 is None:
+            print("Please make sure the log-posterior of data-1 is a valid function for MCMC mode!")
+        
+        kld_return = self.KLD_numerical(results2, logpMock_2, mock1_NS_result, logP_1, domain = domain, prior_transform=prior_transform,
+                                    clip_range = clip_range, clip_values = True, progress=False, batch_size = 1000)
+            
+        return kld_return, sample
+
 
     def write_results_to_hdf5(self):
         # this function is currently beeing used to save the results.
