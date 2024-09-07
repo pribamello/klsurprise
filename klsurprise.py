@@ -516,10 +516,51 @@ class surprise_statistics:
         return res_1
 
     def surprise_function_call(self, Nkld, result_path, n_effective= 15000, n_jobs=-1, verbose=1):
-        # logL1 --> a callable function of theta (parameter)
-        # logL2 --> a callable function of theta (parameter) and D (data).
-        # data_2_vec is yet to be added. If provided then function should also compute KLD(p2|p1) 
-        # and return the surprise statistic value  
+        '''
+        Compute the Kullback-Leibler Divergence (KLD) distribution and optionally calculate the surprise statistic 
+        if a second dataset is provided.
+
+        This function loads or creates posterior samples using Nested Sampling (NS) for a first dataset (D1) 
+        and then creates a Posterior Predictive Distribution (PPD). If a second dataset (D2) is provided, 
+        it also computes the KLD between the posterior distributions of D1 and D2, returning the surprise statistic.
+
+        Parameters:
+        -----------
+        Nkld : int
+            The number of KLD samples to be drawn from the Posterior Predictive Distribution (PPD).
+        
+        result_path : str
+            The path where the results will be saved (in HDF5 format).
+        
+        n_effective : int, optional (default=15000)
+            The number of effective samples to target for the nested sampling run.
+
+        n_jobs : int, optional (default=-1)
+            The number of parallel jobs to run. Set to -1 to use all available cores.
+
+        verbose : int, optional (default=1)
+            Level of verbosity. Set to 0 for silent mode, higher values for more verbose output.
+
+        Returns:
+        --------
+        results_dic : dict
+            A dictionary containing the computed KLD values and the surprise statistic (if applicable). 
+            The contents of the dictionary vary depending on whether a second dataset is provided. The keys include:
+            - 'S': The computed surprise statistic (if D2 is provided).
+            - 'S_dist': The distribution of surprise statistics.
+            - 'kld21': KLD(p2 | p1), i.e., the KLD between the posterior distributions of D1 and D2 (if D2 is provided).
+            - 'kld_exp': The expected KLD (mean value of the KLD distribution).
+            - 'kld_dist': The distribution of KLD samples.
+            - 'p_value': The p-value associated with the surprise statistic (if D2 is provided).
+            - 'sigma_discordance': The sigma-level discordance between the two datasets (if D2 is provided).
+
+        Notes:
+        ------
+        - The function first computes the KLD between the posterior distribution and the PPD for dataset D1. 
+        - If a second dataset (D2) is provided, the KLD between the posterior distributions of D1 and D2 is also computed.
+        - The function calculates the surprise statistic using the expected KLD and compares it to the KLD of D2.
+        '''
+        
         ndim = domain.shape[0]
 
         logL1 = self.logL1 
