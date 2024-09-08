@@ -5,7 +5,7 @@ from dynesty import utils as dyfunc
 import jax.numpy as jnp
 from jax import vmap
 from jax import jit
-from jax.scipy.linalg import solve_triangular
+from jax.scipy.linalg import solve_triangular, cholesky
 
 from joblib import Parallel, delayed
 from joblib import load, dump
@@ -59,7 +59,7 @@ class surprise_statistics:
     """
 
 
-    def __init__(self, logL1, data_2_model_fun, covariance_matrix_2, domain, data_2=None, data_1_name=None, data_2_name=None):
+    def __init__(self, logL1, data_2_model_fun, covariance_matrix_2, domain, data_2=None, data_1_name=None, data_2_name=None, init_NS = False, Nppd = None):
             """
             Initializes the SurpriseStatistics class with the provided parameters.
             """
@@ -71,22 +71,61 @@ class surprise_statistics:
             self.data_1_name = data_1_name
             self.data_2_name = data_2_name
             self.ndim = domain.shape[0]
+        
+            self.chol_cov_2 = jnp.linalg.cholesky(covariance_matrix_2)
+            self.res_1, self.res_2 = None, None
+            self.PPD_chain = None
 
-            self.chol_cov_2 = jnp.linalg.cholesky(covariance_matrix_2)  
+    def __initialize_NS__(self):
+        self.res_1 = self.load_create_NS_file(self.data_1_name, self.logL1, self.ndim, self.domain)
+        try:
+            self.res_2 = self.load_create_NS_file(self.data_2_name, self.logP2, self.ndim, self.domain)
+        except:
+            print("Could neither load or create the posterior NS estimate for data D2.")
 
+    def __initialize_PPD__(self, Nppd, n_jobs = 1, sample_size = 1):
+        if self.res_1 is None:
+            self.res_1 = self.load_create_NS_file(self.data_1_name, self.logL1, self.ndim, self.domain)
+        self.th1_samples = self.sampler(self.res_1.samples_equal(), Nppd) # we take a subset of samples with size Nkld
+        self.PPD_chain = PPD.create_ppd_chain(th1_samples=self.th1_samples, data_model_fun=self.data_2_model_fun, 
+                                              cov_matrix = self.covariance_matrix_2, sample_size=sample_size, n_jobs=n_jobs)
+
+    # @jit # not working for some reason ...
     def logL2(self, theta, D):
         """
-        Compute the log-likelihood of x for the multivariate normal distribution.
+        Compute the log-likelihood of theta for the multivariate normal distribution.
         
         Args:
-        - x: The observed data (n-dimensional vector).
-        - D: 
+        - theta: parameter space vector (n-dimensional vector).
+        - D: Data space vector
 
         Returns:
-        - The log-likelihood of x.
+        - The log-likelihood of theta, D.
         """
         n = D.shape[0]
         diff = self.data_2_model_fun(theta) - D
+        # Solve the triangular system using the Cholesky factor
+        solve = solve_triangular(self.chol_cov_2, diff, lower=True)
+        log_det_cov = 2 * jnp.sum(jnp.log(jnp.diagonal(self.chol_cov_2)))
+        log_likelihood = -0.5 * (n * jnp.log(2 * jnp.pi) + log_det_cov + jnp.dot(solve, solve))
+        
+        return log_likelihood
+    
+    # @jit
+    def logP2(self, theta):
+        """
+        Compute the log-posterior of theta for the multivariate normal likelihood.
+        Assumes a flat prior.
+        
+        Args:
+        - theta: the parameter vector (n-dimensional vector).
+        - D: 
+
+        Returns:
+        - The log-likelihood of theta.
+        """
+        n = self.data_2.shape[0]
+        diff = self.data_2_model_fun(theta) - self.data_2
         # Solve the triangular system using the Cholesky factor
         solve = solve_triangular(self.chol_cov_2, diff, lower=True)
         log_det_cov = 2 * jnp.sum(jnp.log(jnp.diagonal(self.chol_cov_2)))
@@ -257,7 +296,7 @@ class surprise_statistics:
 
     def KLD_numerical(self, res_p, logP, res_q, logQ, domain=None, 
                         clip_range=[-1e16, 5000], clip_values=True, progress=True, 
-                        batch_size=1000):
+                        batch_size=1000, prior_transform='flat'):
         """
         Computes the Kullback-Leibler Divergence between two distributions: KLD(p|q).
 
@@ -299,7 +338,6 @@ class surprise_statistics:
         """
 
         # Compute the prior volume if domain is provided
-        prior_transform='flat'
         if (domain is not None) and (prior_transform == 'flat'):
             prior_volume = self.calculate_flat_prior_volume(domain)
         # else assume it to be one
@@ -312,13 +350,13 @@ class surprise_statistics:
         # Compute the evidence-normalized log-probability functions for both distributions
         logZp = res_p['logz'][-1] + np.log(prior_volume)
         
-        @jit
+        # @jit
         def logP_norm(x):
             return logP(x) - logZp    
 
         logZq = res_q['logz'][-1] + np.log(prior_volume)
         
-        @jit
+        # @jit
         def logQ_norm(x):
             return logQ(x) - logZq 
             
@@ -336,7 +374,7 @@ class surprise_statistics:
 
         return kld
 
-    def kld_worker(self, sample, logL_mock, mock1_NS_result, logP_1=None, domain=None, ndim=None, 
+    def kld_worker(self, sample, logL_mock = None, mock1_NS_result= None, logP_1=None, ndim=None, 
                 prior_transform='flat', n_effective = 20000, clip_range = [-1e16, 50000]):
         '''
         Worker function for parallelizing the evaluation of the Kullback-Leibler Divergence (KLD) distribution.
@@ -385,20 +423,23 @@ class surprise_statistics:
         - Currently only works for flat priors.
         '''  
 
-        if (domain is not None):
-            domain_pass = self.domain
         if (ndim is None):
             ndim = self.ndim
-        if callable(prior_transform):
-            domain_pass = None
-        # create mock data and run nested sampling 
-        logpMock_2 = lambda u : logL_mock(u, sample) # create full posterior distribution 2
+        if logL_mock is None:
+            logL_mock = self.logL2
+        if mock1_NS_result is None:
+            mock1_NS_result = self.res_1 
+
+        # create mock data and run nested sampling
+        # @jit
+        def logpMock_2(theta):
+            return self.logL2(theta, sample) # create full posterior distribution 2
         results2 = self.run_nested_sampling(logpMock_2, ndim=ndim, prior_transform=prior_transform, 
-                                        domain=domain_pass, n_effective=n_effective) # functions arguments are the best for SNIa chain.
+                                        domain=self.domain, n_effective=n_effective) # functions arguments are the best for SNIa chain.
         if logP_1 is None:
             print("Please make sure the log-posterior of data-1 is a valid function for MCMC mode!")
         
-        kld_return = self.KLD_numerical(results2, logpMock_2, mock1_NS_result, logP_1, domain = domain, prior_transform=prior_transform,
+        kld_return = self.KLD_numerical(results2, logpMock_2, mock1_NS_result, logP_1=self.logL1, domain = self.domain, prior_transform=prior_transform,
                                     clip_range = clip_range, clip_values = True, progress=False, batch_size = 1000)
             
         return kld_return, sample
@@ -432,7 +473,7 @@ class surprise_statistics:
                     raise TypeError(f"Unsupported data type for key '{key}': {type(value)}")
     
 
-    def compute_kld_distribution(self, PPDsamples, logL_mock, mock1_NS_result, logP_1=None, domain=None, ndim=None, n_jobs=4, 
+    def compute_kld_distribution(self, PPDsamples, logL_mock, mock1_NS_result, logP_1=None,  n_jobs=4, 
                   result_path='results.hdf5', prior_transform='flat', n_effective=20000, clip_range = [-1e16, 50000]):
         """
         Parallel computation of KLD for PPD samples and saving results to HDF5. Will compute distribution Dkl(p2i, p1)
@@ -447,12 +488,11 @@ class surprise_statistics:
         - prior_transform: currently a flat prior transform defined by domain. 
         """
         kld_results, ppdsample_results = [], []
+        if logP_1 is None:
+            logP_1 = self.logL1
 
-        if domain is None:
-            domain_pass = self.domain
-        
         results = Parallel(n_jobs=n_jobs)(delayed(self.kld_worker)
-                                        (sample, logL_mock, mock1_NS_result, logP_1, domain_pass, ndim, prior_transform, n_effective, clip_range)
+                                        (sample, logL_mock, mock1_NS_result, logP_1, self.ndim, prior_transform, n_effective, clip_range)
                                         for i, sample in enumerate(tqdm(PPDsamples, desc="Iterating over the PPD")))
 
         for kld, ppdsample in results:
@@ -521,7 +561,7 @@ class surprise_statistics:
         if a second dataset is provided.
 
         This function loads or creates posterior samples using Nested Sampling (NS) for a first dataset (D1) 
-        and then creates a Posterior Predictive Distribution (PPD). If a second dataset (D2) is provided, 
+        and then load or create a Posterior Predictive Distribution (PPD). If a second dataset (D2) is provided, 
         it also computes the KLD between the posterior distributions of D1 and D2, returning the surprise statistic.
 
         Parameters:
@@ -561,45 +601,38 @@ class surprise_statistics:
         - The function calculates the surprise statistic using the expected KLD and compares it to the KLD of D2.
         '''
         
-        ndim = self.ndim
-        logL1 = self.logL1 
-        logL2 = self.logL2 
-        data2_model_fun = self.data_2_model_fun
-        covariance_matrix_2 = self.covariance_matrix_2
-        domain = self.domain
-        data_1_name = self.data_1_name
-        data_2_vec = self.data_2
-        data_2_name = self.data_2_name
-        ############ loading/creating mock 1 ############
-        res_1 = self.load_create_NS_file(data_1_name, logL1, ndim, domain)
-        
-        # This method is a particularity of Dynesty, but can be easily implemented for any other NS package.
-        # Equal weighted samples 
-        eq_samples_1 = res_1.samples_equal()
+        print("Handling dataset 1...")
+        print(70*"_")
+        ############ loading/creating mock 1 and 2 ############
+        if self.res_1 is None:
+            self.__initialize_NS__()
         print("Done!")
         
+        print("")
+        print("Handling posterior predictive distribution PPD(D2|D1) ...")
+        print(70*"_")
+        
         ############ create posterior predictive distribution ############
-        # parameter space samples of posterior distribution p(theta|D1)
-        th1_samples = self.sampler(eq_samples_1, Nkld) # we take a subset of samples with size Nkld
-        PPD_chain = PPD.create_ppd_chain(th1_samples=th1_samples, data_model_fun=data2_model_fun, cov_matrix = covariance_matrix_2, sample_size=1, n_jobs=n_jobs)
+        if self.PPD_chain is None:
+            self.__initialize_PPD__(Nkld)
+        else:
+            Nkld = self.PPD_chain.shape[0]
+            print("Will sample KLD the same size as PPD.\nNkld = ", Nkld)
 
-        kld_samples = self.compute_kld_distribution(PPD_chain, logL2, res_1, logP_1=logL1,  domain=domain, n_jobs=n_jobs, n_effective=n_effective)
-
-        kld_array = np.array(kld_samples)
+        print("Handling KLD distribution...")
+        print(70*"_")
+        kld_samples = self.compute_kld_distribution(self.PPD_chain, self.logL2, self.res_1, logP_1=self.logL1, 
+                                                    domain=self.domain, n_jobs=n_jobs, n_effective=n_effective)
+        
+        print("Able to get here!")
+        kld_array = jnp.array(kld_samples)
+        # kld_array = np.array(kld_samples)
         kld_exp = kld_array.mean()
         S_dist = kld_array - kld_exp
 
         # if data 2 is provided
-        if data_2_vec is not None:
-            logP2 = lambda theta : logL2(theta, data_2_vec)
-
-            # load or create data_2 posterior chain with NS
-            if data_2_name is not None:
-                res_2 = self.load_create_NS_file(data_2_name, logP2, ndim, domain)
-            else:
-                res_2 = self.run_nested_sampling(logP2, ndim, domain=domain, print_progress=True)
-            
-            kld_value = self.KLD_numerical(res_2, logP2, res_1, logL1, domain = domain)
+        if self.res_2 is not None:
+            kld_value = self.KLD_numerical(self.res_2, self.logP2, self.res_1, self.logL1, domain = self.domain)
             S = kld_value - kld_exp
             p_value = self.find_pval(S_dist, S, verbose = verbose)
             sigma_disc = self.sigma_discordance(p_value)
@@ -607,11 +640,66 @@ class surprise_statistics:
                 print("S = {:.2f} nats".format(S))
                 print("<KLD> = {:.2f} nats".format(kld_exp))
                 print("KLD = {:.2f} nats".format(kld_value))
-            results_dic = {"S" : S, "S_dist": S_dist, "kld21" : kld_value[0], "kld_exp":kld_exp, "kld_dist":kld_array, "p_value":p_value, 'sigma_discordance':sigma_disc}
+            results_dic = {"domain" : self.domain, "S" : S, "S_dist": S_dist, "kld21" : kld_value[0], "kld_exp":kld_exp, "kld_dist":kld_array, "p_value":p_value, 'sigma_discordance':sigma_disc}
         else:
             if verbose>0:
                 print("<KLD> = {:.2f} nats".format(kld_exp))
-            results_dic = {"S_dist": S_dist, "kld_exp":kld_exp, "kld_dist":kld_array}
+            results_dic = {"domain" : self.domain, "S_dist": S_dist, "kld_exp":kld_exp, "kld_dist":kld_array}
         if result_path is not None:
             self.save_dict_to_hdf5(result_path, results_dic)
         return results_dic
+    
+
+    ################################################ create PPD ################################################
+    ############################################################################################################
+    def generate_samples(self, theory_vec, L, nz, sample_size):
+        """
+        Generate Gaussian samples for a given theory vector.
+        """
+        z = np.random.normal(size=(sample_size, nz))
+        gaussian_samples = theory_vec + np.dot(z, L.T)
+        return gaussian_samples
+
+    def create_ppd_chain(self, th1_samples, data_model_fun = None, cov_matrix = None, sample_size=10, n_jobs=4):
+        """
+        Create the Posterior Predictive Distribution (PPD) chain. This function assumes a Gaussian likelihood for each observed datavector, it then takes 
+        'sample_size' samples from each Gaussian and join them togheter in a matrix where each line is a data sample from the PPD.
+        
+        Parameters:
+        - th1_samples: The samples from the parameter space of the posterior distribution. Given as input to create_mock function. Should be (h, Om, Ok, w)
+        - data_model_fun: A function that takes an input the cosmological parameters theta as an array and returns a data vector.
+        - cov_matrix: Covariance matrix of predicted distribution. Standard matrix is Pantheon covariance.
+        - sample_size: The number of samples to be taken from the Gaussian distribution for each theory vector.
+        - n_jobs: The number of parallel jobs to run.
+        
+        Returns:
+        - The PPD chain as a numpy array.
+        """
+
+        # if th1_samples is None:
+            # th1_samples = self.res_1.samples_equal()
+        if data_model_fun is None:
+            data_model_fun = self.data_2_model_fun
+        if cov_matrix is None:
+            cov_matrix = self.covariance_matrix_2
+
+        print("Evaluating theory from sample distribution p1")
+        D1_th1_samples = np.zeros((th1_samples.shape[0], cov_matrix.shape[0]))
+        for i, th in enumerate(tqdm(th1_samples, desc="Generating theory vectors")):
+            D1_th = data_model_fun(th)
+            D1_th1_samples[i] = D1_th
+
+        print("Sampling the Posterior Predictive Distribution...")
+        ntheta, nz = D1_th1_samples.shape
+
+        # Perform Cholesky decomposition once, outside the loop
+        L = cholesky(cov_matrix, lower=True)
+
+        # Parallel execution
+        samples_list = Parallel(n_jobs=n_jobs)(
+            delayed(self.generate_samples)(theory_vec, L, nz, sample_size) for theory_vec in tqdm(D1_th1_samples, desc="Sampling PPD")
+        )
+
+        # Concatenate all the sample arrays into one array
+        PPD_chain = np.vstack(samples_list)
+        return PPD_chain
