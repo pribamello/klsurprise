@@ -515,7 +515,7 @@ class surprise_statistics:
                 pass
         return res_1
 
-    def surprise_function_call(self, Nkld, result_path, n_effective= 15000, n_jobs=-1, verbose=1):
+    def surprise_function_call(self, Nkld, result_path = None, n_effective= 15000, n_jobs=-1, verbose=1):
         '''
         Compute the Kullback-Leibler Divergence (KLD) distribution and optionally calculate the surprise statistic 
         if a second dataset is provided.
@@ -561,8 +561,7 @@ class surprise_statistics:
         - The function calculates the surprise statistic using the expected KLD and compares it to the KLD of D2.
         '''
         
-        ndim = domain.shape[0]
-
+        ndim = self.ndim
         logL1 = self.logL1 
         logL2 = self.logL2 
         data2_model_fun = self.data_2_model_fun
