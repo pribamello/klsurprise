@@ -14,8 +14,29 @@ from tqdm.auto import tqdm
 import h5py
 from scipy import special
 
-
+# might add to this code...
 import PPD
+
+@jit
+def logL2_jitted(data_2_model, chol_cov_2, D):
+    """
+    JIT-compatible log-likelihood computation.
+    
+    Args:
+    - data_2_model: Model data (already computed from theta).
+    - chol_cov_2: Cholesky factor of the covariance matrix.
+    - D: Data space vector.
+
+    Returns:
+    - The log-likelihood.
+    """
+    n = D.shape[0]
+    diff = data_2_model - D
+    solve = solve_triangular(chol_cov_2, diff, lower=True)
+    log_det_cov = 2 * jnp.sum(jnp.log(jnp.diagonal(chol_cov_2)))
+    log_likelihood = -0.5 * (n * jnp.log(2 * jnp.pi) + log_det_cov + jnp.dot(solve, solve))
+    
+    return log_likelihood
 
 
 class surprise_statistics:
@@ -90,7 +111,6 @@ class surprise_statistics:
         self.PPD_chain = PPD.create_ppd_chain(th1_samples=self.th1_samples, data_model_fun=self.data_2_model_fun, 
                                               cov_matrix = self.covariance_matrix_2, sample_size=sample_size, n_jobs=n_jobs)
 
-    # @jit # not working for some reason ...
     def logL2(self, theta, D):
         """
         Compute the log-likelihood of theta for the multivariate normal distribution.
@@ -102,36 +122,11 @@ class surprise_statistics:
         Returns:
         - The log-likelihood of theta, D.
         """
-        n = D.shape[0]
-        diff = self.data_2_model_fun(theta) - D
-        # Solve the triangular system using the Cholesky factor
-        solve = solve_triangular(self.chol_cov_2, diff, lower=True)
-        log_det_cov = 2 * jnp.sum(jnp.log(jnp.diagonal(self.chol_cov_2)))
-        log_likelihood = -0.5 * (n * jnp.log(2 * jnp.pi) + log_det_cov + jnp.dot(solve, solve))
-        
-        return log_likelihood
+        data_2_model = self.data_2_model_fun(theta)
+        return logL2_jitted(data_2_model, self.chol_cov_2, D)
     
-    # @jit
     def logP2(self, theta):
-        """
-        Compute the log-posterior of theta for the multivariate normal likelihood.
-        Assumes a flat prior.
-        
-        Args:
-        - theta: the parameter vector (n-dimensional vector).
-        - D: 
-
-        Returns:
-        - The log-likelihood of theta.
-        """
-        n = self.data_2.shape[0]
-        diff = self.data_2_model_fun(theta) - self.data_2
-        # Solve the triangular system using the Cholesky factor
-        solve = solve_triangular(self.chol_cov_2, diff, lower=True)
-        log_det_cov = 2 * jnp.sum(jnp.log(jnp.diagonal(self.chol_cov_2)))
-        log_likelihood = -0.5 * (n * jnp.log(2 * jnp.pi) + log_det_cov + jnp.dot(solve, solve))
-        
-        return log_likelihood
+        return self.logL2(theta, self.data_2)
 
     def sampler(self, chain, nsample):
         '''
@@ -348,13 +343,13 @@ class surprise_statistics:
         samples_p = res_p.samples_equal()
         
         # Compute the evidence-normalized log-probability functions for both distributions
-        logZp = res_p['logz'][-1] + np.log(prior_volume)
+        logZp = res_p['logz'][-1] + jnp.log(prior_volume)
         
         # @jit
         def logP_norm(x):
             return logP(x) - logZp    
 
-        logZq = res_q['logz'][-1] + np.log(prior_volume)
+        logZq = res_q['logz'][-1] + jnp.log(prior_volume)
         
         # @jit
         def logQ_norm(x):
