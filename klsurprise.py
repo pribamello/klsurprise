@@ -431,12 +431,10 @@ class surprise_statistics:
             return self.logL2(theta, sample) # create full posterior distribution 2
         results2 = self.run_nested_sampling(logpMock_2, ndim=ndim, prior_transform=prior_transform, 
                                         domain=self.domain, n_effective=n_effective) # functions arguments are the best for SNIa chain.
-        if logP_1 is None:
-            print("Please make sure the log-posterior of data-1 is a valid function for MCMC mode!")
         
-        kld_return = self.KLD_numerical(results2, logpMock_2, mock1_NS_result, logP_1=self.logL1, domain = self.domain, prior_transform=prior_transform,
-                                    clip_range = clip_range, clip_values = True, progress=False, batch_size = 1000)
-            
+        kld_return = self.KLD_numerical(results2, logpMock_2, mock1_NS_result, self.logL1, domain=self.domain, 
+                        clip_range=clip_range, clip_values=True, progress=False, batch_size=1000, prior_transform='flat')
+        
         return kld_return, sample
 
    
@@ -468,8 +466,8 @@ class surprise_statistics:
                     raise TypeError(f"Unsupported data type for key '{key}': {type(value)}")
     
 
-    def compute_kld_distribution(self, PPDsamples, logL_mock, mock1_NS_result, logP_1=None,  n_jobs=4, 
-                  result_path='results.hdf5', prior_transform='flat', n_effective=20000, clip_range = [-1e16, 50000]):
+    def compute_kld_distribution(self, PPDsamples=None, logL_mock=None, mock1_NS_result=None, logP_1=None,  n_jobs=4, 
+                  result_path=None, prior_transform='flat', n_effective=20000, clip_range = [-1e16, 50000]):
         """
         Parallel computation of KLD for PPD samples and saving results to HDF5. Will compute distribution Dkl(p2i, p1)
 
@@ -483,6 +481,13 @@ class surprise_statistics:
         - prior_transform: currently a flat prior transform defined by domain. 
         """
         kld_results, ppdsample_results = [], []
+
+        if PPDsamples is None:
+            PPDsamples = self.PPD_chain
+        if logL_mock is None:
+            logL_mock = self.logL2
+        if mock1_NS_result is None:
+            mock1_NS_result = self.res_1
         if logP_1 is None:
             logP_1 = self.logL1
 
@@ -494,7 +499,7 @@ class surprise_statistics:
             kld_results.append(kld)
             ppdsample_results.append(ppdsample) 
 
-        results_dict = {"kld_dist" : kld_results, "ppd_sample" : ppdsample_results}
+        results_dict = {"kld_dist" : np.array(kld_results), "ppd_sample" : np.array(ppdsample_results)}
 
         if result_path is not None:
             self.save_dict_to_hdf5(result_path, results_dict)
@@ -617,9 +622,8 @@ class surprise_statistics:
         print("Handling KLD distribution...")
         print(70*"_")
         kld_samples = self.compute_kld_distribution(self.PPD_chain, self.logL2, self.res_1, logP_1=self.logL1, 
-                                                    domain=self.domain, n_jobs=n_jobs, n_effective=n_effective)
-        
-        print("Able to get here!")
+                                                    n_jobs=n_jobs, n_effective=n_effective)
+
         kld_array = jnp.array(kld_samples)
         # kld_array = np.array(kld_samples)
         kld_exp = kld_array.mean()
@@ -629,18 +633,20 @@ class surprise_statistics:
         if self.res_2 is not None:
             kld_value = self.KLD_numerical(self.res_2, self.logP2, self.res_1, self.logL1, domain = self.domain)
             S = kld_value - kld_exp
-            p_value = self.find_pval(S_dist, S, verbose = verbose)
+            p_value = self.find_pval(S_dist, S, verbose = 0)
             sigma_disc = self.sigma_discordance(p_value)
             if verbose>0:
                 print("S = {:.2f} nats".format(S))
                 print("<KLD> = {:.2f} nats".format(kld_exp))
                 print("KLD = {:.2f} nats".format(kld_value))
-            results_dic = {"domain" : self.domain, "S" : S, "S_dist": S_dist, "kld21" : kld_value[0], "kld_exp":kld_exp, "kld_dist":kld_array, "p_value":p_value, 'sigma_discordance':sigma_disc}
+                print("p-val = {:.2f} nats".format(p_value))
+            results_dic = {"domain" : self.domain, "S" : S, "S_dist": S_dist, "kld21" : kld_value, "kld_exp":kld_exp, "kld_dist":kld_array, "p_value":p_value, 'sigma_discordance':sigma_disc}
         else:
             if verbose>0:
                 print("<KLD> = {:.2f} nats".format(kld_exp))
             results_dic = {"domain" : self.domain, "S_dist": S_dist, "kld_exp":kld_exp, "kld_dist":kld_array}
         if result_path is not None:
+            print("Saving results to ", result_path)
             self.save_dict_to_hdf5(result_path, results_dic)
         return results_dic
     

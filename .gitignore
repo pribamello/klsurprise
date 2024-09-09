@@ -3,3 +3,5 @@ legacy_code
 debug.ipynb
 
 *.ipynb
+
+*.pkl
