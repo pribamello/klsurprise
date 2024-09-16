@@ -14,9 +14,6 @@ from tqdm.auto import tqdm
 import h5py
 from scipy import special
 
-# might add to this code...
-import PPD
-
 @jit
 def logL2_jitted(data_2_model, chol_cov_2, D):
     """
@@ -108,7 +105,7 @@ class surprise_statistics:
         if self.res_1 is None:
             self.res_1 = self.load_create_NS_file(self.data_1_name, self.logL1, self.ndim, self.domain)
         self.th1_samples = self.sampler(self.res_1.samples_equal(), Nppd) # we take a subset of samples with size Nkld
-        self.PPD_chain = PPD.create_ppd_chain(th1_samples=self.th1_samples, data_model_fun=self.data_2_model_fun, 
+        self.PPD_chain = self.create_ppd_chain(th1_samples=self.th1_samples, data_model_fun=self.data_2_model_fun, 
                                               cov_matrix = self.covariance_matrix_2, sample_size=sample_size, n_jobs=n_jobs)
 
     def logL2(self, theta, D):
