@@ -648,6 +648,7 @@ class surprise_statistics:
         if result_path is not None:
             print("Saving results to ", result_path)
             self.save_dict_to_hdf5(result_path, results_dic)
+        
         return results_dic
     
 
