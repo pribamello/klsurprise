@@ -1,2 +1,2 @@
 # klsurprise
-Non-gaussian Surprise code
+Code for computing the non-gaussian Surprise between two datasets
