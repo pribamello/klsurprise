@@ -425,7 +425,8 @@ class surprise_statistics:
         # create mock data and run nested sampling
         # @jit
         def logpMock_2(theta):
-            return self.logL2(theta, sample) # create full posterior distribution 2
+            return jnp.nan_to_num(self.logL2(theta, sample), nan = 1e-32) # create full posterior distribution 2
+        
         results2 = self.run_nested_sampling(logpMock_2, ndim=ndim, prior_transform=prior_transform, 
                                         domain=self.domain, n_effective=n_effective) # functions arguments are the best for SNIa chain.
         
@@ -487,7 +488,7 @@ class surprise_statistics:
             mock1_NS_result = self.res_1
         if logP_1 is None:
             logP_1 = self.logL1
-
+        
         results = Parallel(n_jobs=n_jobs)(delayed(self.kld_worker)
                                         (sample, logL_mock, mock1_NS_result, logP_1, self.ndim, prior_transform, n_effective, clip_range)
                                         for i, sample in enumerate(tqdm(PPDsamples, desc="Iterating over the PPD")))
