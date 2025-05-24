@@ -8,7 +8,7 @@ import BAO_likelihood_DESI as BAO
 
 
 # pathdir = '../'
-pathdir = '.'
+# pathdir = '.'
 import sys
 sys.path.append(pathdir)
 import klsurprise as kls
@@ -44,6 +44,6 @@ sup = kls.surprise_statistics(logL_1, data_2_model_fun, covariance_matrix_2=data
                                data_2_name = "{}_Pantheon+SH0ES_owCDM.pkl".format(date_id),
                                init_NS = True)#, Nppd = 4) # check this parameter...
 
-Nkld = 2000
+Nkld = 2
 # Call the main method
-resultados = sup.surprise_function_call(Nkld = Nkld, result_path = "{}_Surprise_Pan_DESI.hdf5", n_jobs = 64)
+resultados = sup.surprise_function_call(Nkld = Nkld, result_path = "{}_Surprise_Pan_DESI.hdf5", n_jobs = 2)
