@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=64"]
+requires = ["setuptools>=64,<82.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -26,6 +26,7 @@ examples = [
     "getdist>=1.4",
     "matplotlib>=3.8",
     "pandas>=2.1",
+    "setuptools>=64,<82",
 ]
 
 [tool.setuptools.packages.find]

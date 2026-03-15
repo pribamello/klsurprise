@@ -40,18 +40,33 @@ Or, for a non-editable install:
 pip install .
 ```
 
-### 3. To run the examples (adds `pandas`)
+### 3. To run the examples (adds `getdist`, `matplotlib`, `pandas`, and pinned `setuptools`)
 
 ```bash
 pip install -e ".[examples]"
 ```
 
+Or use the one-step install script:
+
+```bash
+bash install_examples.sh
+```
+
+This creates a virtual environment, installs the package in editable mode with all
+example dependencies, and pins `setuptools<82` (see compatibility note below).
+
 ---
 
-### 4. To run examples until 2026. jax_cosmo needs the setuptools pkg_resources, therefore:
-pip install "setuptools<70"
-pip install --force-reinstall setuptools
+> **Compatibility note (15 Mar 2026 -- jax-cosmo 0.1.0):**
+> `jax-cosmo` 0.1.0 imports `pkg_resources` from `setuptools` at runtime to
+> read its own package version. `setuptools` >= 82.0.0 (released 2025)
+> [removed `pkg_resources`](https://setuptools.pypa.io/en/latest/pkg_resources.html),
+> which causes `jax-cosmo` to fail on import. Until `jax-cosmo` releases a
+> fix, `setuptools` must be pinned below 82. The `[examples]` optional
+> dependency group already includes `"setuptools>=64,<82"`, and the
+> `install_examples.sh` script handles this automatically.
 
+---
 
 ## Quick start
 
