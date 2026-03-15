@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "klsurprise"
+version = "0.1.0"
+description = "Compute the non-Gaussian Surprise statistic between two datasets using nested sampling."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+dependencies = [
+    "dynesty>=2.1",
+    "h5py>=3.10",
+    "jax>=0.4.20",
+    "jaxlib>=0.4.20",
+    "jax-cosmo>=0.1.0",
+    "joblib>=1.3",
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+examples = [
+    "getdist>=1.4",
+    "matplotlib>=3.8",
+    "pandas>=2.1",
+]
+
+[tool.setuptools.packages.find]
+include = ["klsurprise*"]
+exclude = ["examples*", "tests*"]
