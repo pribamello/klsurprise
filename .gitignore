@@ -1,3 +1,22 @@
+# Virtual environments
+.venv/
+env/
 
+# Python build artifacts
+__pycache__/
+*.egg-info/
+dist/
+build/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Cached results
+*.pkl
+*.hdf5
+
+# Docs build output
+docs/_build/
+
+# Other
 notebook_plan.md
-docs/
