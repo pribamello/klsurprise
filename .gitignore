@@ -17,6 +17,10 @@ build/
 
 # Docs build output
 docs/_build/
+docs/
+
+# ReadTheDocs config (until docs are ready)
+.readthedocs.yaml
 
 # Other
 notebook_plan.md
