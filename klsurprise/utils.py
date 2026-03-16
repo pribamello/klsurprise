@@ -6,18 +6,24 @@ def sampler(chain, nsample):
     """
     Sample coordinate points on a Markov Chain Monte Carlo (MCMC) chain.
 
-    This function is used to randomly select a specified number of samples from a given chain of equally weighted points.
-    It is useful in scenarios where you need a subset of samples from a larger MCMC chain for analysis
+    This function is used to randomly select a specified number of samples
+    from a given chain of equally weighted points. It is useful in scenarios
+    where you need a subset of samples from a larger MCMC chain for analysis
     or further processing.
 
-    Parameters:
-    chain (array-like): A collection or array representing the MCMC chain.
-                        Each element in this array is a state or point in the MCMC chain.
-    nsample (int): The number of samples to be drawn from the chain. This value should be
-                a positive integer and less than or equal to the length of the chain.
+    Parameters
+    ----------
+    chain : array-like
+        A collection or array representing the MCMC chain.
+        Each element in this array is a state or point in the MCMC chain.
+    nsample : int
+        The number of samples to be drawn from the chain. This value should be
+        a positive integer and less than or equal to the length of the chain.
 
-    Returns:
-    array-like: A subset of the chain, containing the randomly selected samples.
+    Returns
+    -------
+    array-like
+        A subset of the chain, containing the randomly selected samples.
     """
     index = np.arange(0, len(chain))
     rnd_el = np.random.choice(index, nsample)
@@ -27,14 +33,21 @@ def sampler(chain, nsample):
 
 def calculate_flat_prior_volume(domain):
     """
-    Calculate the volume of a flat (uniform) prior distribution over a specified multidimensional domain.
+    Calculate the volume of a flat (uniform) prior distribution over a
+    specified multidimensional domain.
 
-    Parameters:
-    domain (numpy array): A 2D array where each row corresponds to a different dimension of the parameter space.
-                        The first column contains the lower bounds, and the second column contains the upper bounds for each dimension.
+    Parameters
+    ----------
+    domain : numpy.ndarray
+        A 2D array where each row corresponds to a different dimension of the
+        parameter space. The first column contains the lower bounds, and the
+        second column contains the upper bounds for each dimension.
 
-    Returns:
-    float: The calculated volume of the domain, which is the product of the lengths of the intervals for each dimension.
+    Returns
+    -------
+    float
+        The calculated volume of the domain, which is the product of the
+        lengths of the intervals for each dimension.
     """
     lengths = np.diff(domain, axis=1).T
     volume = np.prod(lengths)

@@ -1,6 +1,48 @@
+import os
+
 import numpy as np
 import jax.numpy as jnp
 import h5py
+
+
+def load_dict_from_hdf5(file_name):
+    """
+    Load the contents of an HDF5 file (written by save_dict_to_hdf5) back
+    into a dictionary.
+
+    Scalars are recovered from dataset attributes, and arrays are loaded as
+    NumPy arrays.
+
+    Parameters
+    ----------
+    file_name : str
+        Path to the HDF5 file.
+
+    Returns
+    -------
+    dict
+        Dictionary with the same keys and values that were originally saved.
+
+    Raises
+    ------
+    FileNotFoundError
+        If *file_name* does not exist.
+    """
+    if not os.path.exists(file_name):
+        raise FileNotFoundError(f"File not found: {file_name}")
+
+    data_dict = {}
+    with h5py.File(file_name, "r") as hdf:
+        for key in hdf.keys():
+            dset = hdf[key]
+            if "value" in dset.attrs:
+                # Scalar stored as an attribute on an empty dataset
+                data_dict[key] = dset.attrs["value"]
+            else:
+                arr = np.array(dset)
+                # Unwrap 0-d arrays to Python scalars
+                data_dict[key] = arr.item() if arr.ndim == 0 else arr
+    return data_dict
 
 
 def save_dict_to_hdf5(file_name, data_dict):

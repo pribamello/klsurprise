@@ -23,7 +23,7 @@ def KLD_numerical(
     """
     Computes the Kullback-Leibler Divergence between two distributions: KLD(p|q).
 
-    Parameters:
+    Parameters
     ----------
     res_p : dynesty NS results object
         Dynesty nested sampling results for the first distribution.
@@ -47,16 +47,16 @@ def KLD_numerical(
     batch_size : int, optional
         The size of batches for processing samples (default is 1000).
 
-    Returns:
+    Returns
     -------
     kld : float
         The computed Kullback-Leibler Divergence between the two distributions.
 
-    Notes:
+    Notes
     -----
     - The function currently assumes a flat prior volume if `prior_transform` is 'flat'.
     - A more efficient way to obtain `samples_p` and corresponding `logP` values exists,
-    but is not implemented yet.
+      but is not implemented yet.
     - This function assumes that logP is jax compatible.
     """
 
