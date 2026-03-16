@@ -29,7 +29,7 @@ python3 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
 # 2. Install
-git clone https://github.com/<your-username>/klsurprise.git
+git clone https://github.com/pribamello/klsurprise.git
 cd klsurprise
 pip install -e .                 # editable install
 
